@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>BloxBattle: Fruit Clash</title>
+  <style>
+    body { font-family: sans-serif; background: #111; color: #eee; text-align: center; padding: 2rem; }
+    input, button { padding: 0.5rem; margin: 0.3rem; font-size: 1rem; }
+    #users .user { background: #222; margin: 0.3rem; padding: 0.5rem; border-radius: 5px; cursor: pointer; }
+    #chatBox { width: 100%; max-width: 400px; margin: auto; text-align: left; background: #222; padding: 1rem; border-radius: 5px; height: 200px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h1>🍩 BloxBattle: Fruit Clash</h1>
+  <div id="login">
+    <input id="username" placeholder="Username" />
+    <input id="password" type="password" placeholder="Password" />
+    <button onclick="login()">Login</button>
+  </div>
+
+  <div id="lobby" style="display:none;">
+    <h3>Online Players</h3>
+    <div id="users"></div>
+    <button onclick="startCPU()">Play vs CPU</button>
+    <div id="chatBox"></div>
+    <input id="chatInput" placeholder="Type message..." />
+    <button onclick="sendChat()">Send</button>
+  </div>
+
+  <div id="game" style="display:none;">
+    <h2 id="opponent">Opponent: </h2>
+    <div id="word">Waiting...</div>
+    <input id="input" placeholder="Type fruit..." />
+    <p id="status"></p>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const fruits = ["Dough", "Dragon", "Leopard", "Flame", "Shadow", "Venom", "Control", "Spirit", "Phoenix", "Magma"];
+    let currentWord = "", opponentId = "", username = "";
+
+    function login() {
+      username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      if (username && password) {
+        socket.emit('login', { username, password });
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('lobby').style.display = 'block';
+      }
+    }
+
+    socket.on('userList', (users) => {
+      const usersDiv = document.getElementById('users');
+      usersDiv.innerHTML = '';
+      users.forEach(u => {
+        if (u.username !== username) {
+          const div = document.createElement('div');
+          div.className = 'user';
+          div.textContent = u.username;
+          div.onclick = () => {
+            opponentId = u.id;
+            socket.emit('challenge', u.id);
+          };
+          usersDiv.appendChild(div);
+        }
+      });
+    });
+
+    socket.on('challenged', (from) => {
+      if (confirm(`${from.username} challenged you! Accept?`)) {
+        opponentId = from.id;
+        socket.emit('accept', from.id);
+        startGame(from.username);
+      }
+    });
+
+    socket.on('accepted', (from) => {
+      startGame(from.username);
+    });
+
+    socket.on('opponentMove', (word) => {
+      document.getElementById('status').textContent = `❌ Opponent typed: ${word}`;
+    });
+
+    function startGame(opponentName) {
+      document.getElementById('lobby').style.display = 'none';
+      document.getElementById('game').style.display = 'block';
+      document.getElementById('opponent').textContent = `Opponent: ${opponentName}`;
+      pickWord();
+    }
+
+    function pickWord() {
+      currentWord = fruits[Math.floor(Math.random() * fruits.length)];
+      document.getElementById('word').textContent = currentWord;
+      document.getElementById('input').value = '';
+      document.getElementById('input').focus();
+    }
+
+    document.getElementById('input').addEventListener('input', () => {
+      if (document.getElementById('input').value === currentWord) {
+        document.getElementById('status').textContent = "✅ Correct!";
+        if (opponentId !== 'CPU') {
+          socket.emit('move', { to: opponentId, word: currentWord });
+        }
+        pickWord();
+      }
+    });
+
+    function startCPU() {
+      opponentId = 'CPU';
+      startGame('CPU');
+    }
+
+    function sendChat() {
+      const msg = document.getElementById('chatInput').value;
+      socket.emit('chat', msg);
+      document.getElementById('chatInput').value = '';
+    }
+
+    socket.on('chat', ({ user, msg }) => {
+      const box = document.getElementById('chatBox');
+      box.innerHTML += `<p><strong>${user}:</strong> ${msg}</p>`;
+      box.scrollTop = box.scrollHeight;
+    });
+  </script>
+</body>
+</html>
